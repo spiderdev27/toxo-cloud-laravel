@@ -15,13 +15,13 @@
   ],
   "autoload": {
     "psr-4": {
-      "Toxo\\\\Cloud\\\\Laravel\\\\": "src/"
+      "Toxo\\Cloud\\Laravel\\": "src/"
     }
   },
   "extra": {
     "laravel": {
       "providers": [
-        "Toxo\\\\Cloud\\\\Laravel\\\\ToxoCloudServiceProvider"
+        "Toxo\\Cloud\\Laravel\\ToxoCloudServiceProvider"
       ]
     }
   },
