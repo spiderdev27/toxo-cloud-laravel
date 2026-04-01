@@ -5,7 +5,6 @@ namespace Toxo\Cloud\Laravel;
 use GuzzleHttp\Client as HttpClient;
 use GuzzleHttp\Exception\RequestException;
 use Illuminate\Support\Arr;
-use Illuminate\Support\Facades\File;
 
 class ToxoCloudClient
 {
@@ -97,10 +96,14 @@ class ToxoCloudClient
         $docB64 = $documentBase64;
 
         if ($imagePath) {
-            if (! File::exists($imagePath)) {
+            if (! is_file($imagePath)) {
                 throw new \RuntimeException("Image not found: {$imagePath}");
             }
-            $imgB64 = base64_encode(File::get($imagePath));
+            $bytes = file_get_contents($imagePath);
+            if ($bytes === false) {
+                throw new \RuntimeException("Failed to read image: {$imagePath}");
+            }
+            $imgB64 = base64_encode($bytes);
             if (! $effectiveMime) {
                 $effectiveMime = $this->guessMimeType($imagePath) ?: 'image/png';
             }
@@ -111,10 +114,14 @@ class ToxoCloudClient
         }
 
         if ($documentPath) {
-            if (! File::exists($documentPath)) {
+            if (! is_file($documentPath)) {
                 throw new \RuntimeException("Document not found: {$documentPath}");
             }
-            $docB64 = base64_encode(File::get($documentPath));
+            $bytes = file_get_contents($documentPath);
+            if ($bytes === false) {
+                throw new \RuntimeException("Failed to read document: {$documentPath}");
+            }
+            $docB64 = base64_encode($bytes);
             if (! $effectiveMime) {
                 $effectiveMime = $this->guessMimeType($documentPath) ?: 'application/octet-stream';
             }
@@ -311,10 +318,13 @@ class ToxoCloudClient
         $config = $params['config'];
         if (! is_array($config)) {
             $path = (string) $config;
-            if (! File::exists($path)) {
+            if (! is_file($path)) {
                 throw new \RuntimeException("Config file not found: {$path}");
             }
-            $text = File::get($path);
+            $text = file_get_contents($path);
+            if ($text === false) {
+                throw new \RuntimeException("Failed to read config file: {$path}");
+            }
             $lower = strtolower(pathinfo($path, PATHINFO_EXTENSION));
             if (in_array($lower, ['yml', 'yaml'], true)) {
                 if (! class_exists(\Symfony\Component\Yaml\Yaml::class)) {
@@ -351,11 +361,15 @@ class ToxoCloudClient
      */
     protected function layerBase64(string $path): string
     {
-        if (! File::exists($path)) {
+        if (! is_file($path)) {
             throw new \RuntimeException("Layer file not found: {$path}");
         }
 
-        return base64_encode(File::get($path));
+        $bytes = file_get_contents($path);
+        if ($bytes === false) {
+            throw new \RuntimeException("Failed to read layer file: {$path}");
+        }
+        return base64_encode($bytes);
     }
 
     /**
@@ -363,13 +377,17 @@ class ToxoCloudClient
      */
     protected function docPayload(string $path): array
     {
-        if (! File::exists($path)) {
+        if (! is_file($path)) {
             throw new \RuntimeException("Document not found: {$path}");
         }
 
+        $bytes = file_get_contents($path);
+        if ($bytes === false) {
+            throw new \RuntimeException("Failed to read document: {$path}");
+        }
         return [
             'path'        => $path,
-            'data_base64' => base64_encode(File::get($path)),
+            'data_base64' => base64_encode($bytes),
             'mime_type'   => $this->guessMimeType($path),
         ];
     }
