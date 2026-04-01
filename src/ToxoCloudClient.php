@@ -31,6 +31,22 @@ class ToxoCloudClient
     }
 
     /**
+     * Service root (`GET /`).
+     */
+    public function root(): array
+    {
+        return $this->get('/', 20);
+    }
+
+    /**
+     * Health check (`GET /health`).
+     */
+    public function health(): array
+    {
+        return $this->get('/health', 20);
+    }
+
+    /**
      * Text query (`POST /v1/query`).
      */
     public function query(string $layerPath, string $question, array $options = []): string
@@ -370,6 +386,45 @@ class ToxoCloudClient
         }
 
         return null;
+    }
+
+    /**
+     * Low-level GET helper.
+     */
+    protected function get(string $path, ?int $timeout = null): array
+    {
+        try {
+            $response = $this->http->get($path, [
+                'timeout' => $timeout ?? $this->timeout,
+            ]);
+        } catch (RequestException $e) {
+            $detail = '';
+            $resp = $e->getResponse();
+            if ($resp) {
+                $body = (string) $resp->getBody();
+                $decoded = json_decode($body, true);
+                if (is_array($decoded) && isset($decoded['detail'])) {
+                    $detail = (string) $decoded['detail'];
+                } else {
+                    $detail = mb_substr(trim($body), 0, 400);
+                }
+            }
+
+            if ($detail !== '') {
+                throw new \RuntimeException($e->getMessage() . ' | detail: ' . $detail, 0, $e);
+            }
+
+            throw $e;
+        }
+
+        $body = (string) $response->getBody();
+        $data = json_decode($body, true);
+
+        if (! is_array($data)) {
+            throw new \RuntimeException('Unexpected response from TOXO Cloud');
+        }
+
+        return $data;
     }
 
     /**
