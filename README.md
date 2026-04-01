@@ -40,7 +40,11 @@ php artisan vendor:publish --provider="Toxo\Cloud\Laravel\ToxoCloudServiceProvid
 
 ### Standalone usage (without Laravel)
 
-`toxo-cloud-laravel` is “Laravel-friendly”, but the client itself does **not** require a fully booted Laravel app. You can use it from any PHP script:
+`toxo-cloud-laravel` is “Laravel-friendly”, but the client itself does **not** require a fully booted Laravel app.
+
+By default it will use **Guzzle** if present (recommended). If you don’t want Guzzle, you can pass any **PSR-18** client + **PSR-17** factories.
+
+You can use it from any PHP script:
 
 ```php
 require __DIR__ . '/vendor/autoload.php';
@@ -50,6 +54,27 @@ use Toxo\Cloud\Laravel\ToxoCloudClient;
 $client = new ToxoCloudClient(api_key: getenv('GEMINI_API_KEY'), timeout: 180);
 $answer = $client->query(__DIR__ . '/finance_expert.toxo', 'Explain inflation briefly.');
 echo $answer;
+```
+
+Using PSR-18 explicitly (example):
+
+```php
+use Toxo\Cloud\Laravel\ToxoCloudClient;
+use Psr\Http\Client\ClientInterface;
+use Psr\Http\Message\RequestFactoryInterface;
+use Psr\Http\Message\StreamFactoryInterface;
+
+/** @var ClientInterface $http */
+/** @var RequestFactoryInterface $requests */
+/** @var StreamFactoryInterface $streams */
+
+$client = new ToxoCloudClient(
+    apiKey: getenv('GEMINI_API_KEY'),
+    timeout: 180,
+    httpClient: $http,
+    requestFactory: $requests,
+    streamFactory: $streams,
+);
 ```
 
 ### Authentication (API key resolution)
