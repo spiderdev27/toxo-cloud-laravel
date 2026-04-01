@@ -420,6 +420,10 @@ class ToxoCloudClient
         try {
             $response = $this->http->get($path, [
                 'timeout' => $timeout ?? $this->timeout,
+                'version' => 1.1,
+                'curl' => [
+                    CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
+                ],
             ]);
         } catch (RequestException $e) {
             $detail = '';
