@@ -5,8 +5,12 @@
   "license": "MIT",
   "authors": [
     {
-      "name": "spiderdev",
-      "email": "spiderdev27@users.noreply.github.com"
+      "name": "Mohit Anand",
+      "email": "admin@veoksha.com"
+    },
+    {
+      "name": "Mohit Anand",
+      "email": "mohitanand540@gmail.com"
     }
   ],
   "autoload": {
