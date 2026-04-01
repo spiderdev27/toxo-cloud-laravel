@@ -29,6 +29,10 @@ class ToxoCloudClient
             // Cloud Run + some container libcurl builds can hang on HTTP/2 for GET requests.
             // Force HTTP/1.1 for consistent behavior across environments.
             'version'  => 1.1,
+            'headers' => [
+                // Some container libcurl builds can hang on GET without a User-Agent.
+                'User-Agent' => 'toxo-cloud-laravel/0.1 (+https://github.com/spiderdev27/toxo-cloud-laravel)',
+            ],
             'curl' => [
                 CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
             ],
