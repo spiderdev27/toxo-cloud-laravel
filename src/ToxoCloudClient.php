@@ -35,6 +35,7 @@ class ToxoCloudClient
             ],
             'curl' => [
                 CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
+                CURLOPT_USERAGENT => 'toxo-cloud-laravel/0.1 (+https://github.com/spiderdev27/toxo-cloud-laravel)',
             ],
         ]);
     }
@@ -427,6 +428,7 @@ class ToxoCloudClient
                 'version' => 1.1,
                 'curl' => [
                     CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
+                    CURLOPT_USERAGENT => 'toxo-cloud-laravel/0.1 (+https://github.com/spiderdev27/toxo-cloud-laravel)',
                 ],
             ]);
         } catch (RequestException $e) {
