@@ -26,9 +26,6 @@ class ToxoCloudClient
         $this->http = new HttpClient([
             'base_uri' => rtrim(self::INTERNAL_API_URL, '/'),
             'timeout'  => $this->timeout,
-            // Cloud Run + some container libcurl builds can hang on HTTP/2 for GET requests.
-            // Force HTTP/1.1 for consistent behavior across environments.
-            'version'  => 1.1,
             'headers' => [
                 // Some container libcurl builds can hang on GET without a User-Agent.
                 'User-Agent' => 'curl/8.0',
@@ -425,7 +422,6 @@ class ToxoCloudClient
         try {
             $response = $this->http->get($path, [
                 'timeout' => $timeout ?? $this->timeout,
-                'version' => 1.1,
                 'curl' => [
                     CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
                     CURLOPT_USERAGENT => 'curl/8.0',
