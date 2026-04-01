@@ -38,6 +38,20 @@ Publish config:
 php artisan vendor:publish --provider="Toxo\Cloud\Laravel\ToxoCloudServiceProvider" --tag=config
 ```
 
+### Standalone usage (without Laravel)
+
+`toxo-cloud-laravel` is “Laravel-friendly”, but the client itself does **not** require a fully booted Laravel app. You can use it from any PHP script:
+
+```php
+require __DIR__ . '/vendor/autoload.php';
+
+use Toxo\Cloud\Laravel\ToxoCloudClient;
+
+$client = new ToxoCloudClient(api_key: getenv('GEMINI_API_KEY'), timeout: 180);
+$answer = $client->query(__DIR__ . '/finance_expert.toxo', 'Explain inflation briefly.');
+echo $answer;
+```
+
 ### Authentication (API key resolution)
 
 The client resolves keys in this order:
@@ -84,6 +98,34 @@ class AskController
 
 - Non-2xx responses throw a `RuntimeException` with best-effort `detail` from the response body.
 - File paths (`.toxo`, docs/images, agent config) are validated locally and throw early if missing.
+
+### Saving trained layers (`layer_base64` → `.toxo` file)
+
+Training endpoints return a `layer_base64` field. To persist the new layer:
+
+```php
+$bytes = base64_decode($result['layer_base64'] ?? '');
+file_put_contents(base_path('layers/my_layer.toxo'), $bytes);
+```
+
+## Local testing (smoke test)
+
+This repo includes a local harness at `toxo-cloud-laravel-smoketest/` that calls all endpoints using your repo `.env` (it reads `GEMINI_API_KEY`).
+
+Run it with Docker:
+
+```bash
+# from the repo root
+docker run --rm -v "$(pwd)":/app -w "/app/toxo-cloud-laravel-smoketest" composer:2 \
+  sh -lc "composer install --no-interaction --no-ansi --prefer-source"
+
+docker run --rm -v "$(pwd)":/app -w "/app/toxo-cloud-laravel-smoketest" php:8.4-cli php test.php
+```
+
+Notes:
+
+- The smoke test uses `finance_expert_cloud_20_examples.toxo` as its base layer.
+- For `train_resume_from_data`, use **at least 2 examples** in the request to avoid edge-case failures from tiny datasets.
 
 ## Endpoint-by-endpoint examples
 
@@ -312,4 +354,5 @@ composer require symfony/yaml
 - **Timeouts**: training and indexing can take a while; this client uses higher per-endpoint timeouts (same idea as the Python client).
 - **File sizes**: docs/images are uploaded as base64; keep an eye on payload size.
 - **Where the `.toxo` is saved**: for training endpoints you must write `layer_base64` to a file yourself (examples above).
+- **Resume training minimums**: very small datasets (e.g. 1 example) can be unstable for some training flows; prefer 2+ examples for resume training requests.
 
