@@ -3,6 +3,12 @@
   "description": "Laravel client package for TOXO Cloud (.toxo layers)",
   "type": "library",
   "license": "MIT",
+  "authors": [
+    {
+      "name": "Mohit Anand",
+      "email": "mohit@unstop.com"
+    }
+  ],
   "autoload": {
     "psr-4": {
       "Toxo\\\\Cloud\\\\Laravel\\\\": "src/"
