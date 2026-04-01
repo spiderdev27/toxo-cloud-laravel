@@ -1,4 +1,4 @@
-## toto-cloud-laravel
+## toxo-cloud-laravel
 
 Laravel package for talking to **TOXO Cloud** from PHP, mirroring the Python `toxo-cloud` client for `.toxo` layers.
 
