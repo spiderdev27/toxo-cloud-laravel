@@ -2,19 +2,36 @@
 
 namespace Toxo\Cloud\Laravel;
 
-use GuzzleHttp\Client as HttpClient;
-use GuzzleHttp\Exception\RequestException;
-use Illuminate\Support\Arr;
+use Psr\Http\Client\ClientExceptionInterface;
+use Psr\Http\Client\ClientInterface;
+use Psr\Http\Message\RequestFactoryInterface;
+use Psr\Http\Message\ResponseInterface;
+use Psr\Http\Message\StreamFactoryInterface;
 
 class ToxoCloudClient
 {
     private const INTERNAL_API_URL = 'https://toxo-api-cwsddklqcq-uc.a.run.app';
 
-    protected HttpClient $http;
+    /**
+     * If Guzzle is present we use it for best compatibility (timeouts, curl options).
+     * Otherwise we fall back to PSR-18.
+     */
+    protected object $http;
+    protected bool $isGuzzle = false;
+    protected ?ClientInterface $psr18 = null;
+    protected ?RequestFactoryInterface $requestFactory = null;
+    protected ?StreamFactoryInterface $streamFactory = null;
+
     protected ?string $apiKey;
     protected int $timeout;
 
-    public function __construct(?string $apiKey = null, int $timeout = 120)
+    public function __construct(
+        ?string $apiKey = null,
+        int $timeout = 120,
+        ?ClientInterface $httpClient = null,
+        ?RequestFactoryInterface $requestFactory = null,
+        ?StreamFactoryInterface $streamFactory = null
+    )
     {
         $this->apiKey = $apiKey
             ?? env('GEMINI_API_KEY')
@@ -23,18 +40,54 @@ class ToxoCloudClient
 
         $this->timeout = $timeout;
 
-        $this->http = new HttpClient([
-            'base_uri' => rtrim(self::INTERNAL_API_URL, '/'),
-            'timeout'  => $this->timeout,
-            'headers' => [
-                // Some container libcurl builds can hang on GET without a User-Agent.
-                'User-Agent' => 'curl/8.0',
-            ],
-            'curl' => [
-                CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
-                CURLOPT_USERAGENT => 'curl/8.0',
-            ],
-        ]);
+        $this->requestFactory = $requestFactory;
+        $this->streamFactory = $streamFactory;
+
+        // Prefer an explicit PSR-18 client if provided.
+        if ($httpClient) {
+            $this->psr18 = $httpClient;
+        }
+
+        // If Guzzle is installed, use it by default (recommended).
+        if ($this->psr18 === null && class_exists(\GuzzleHttp\Client::class)) {
+            $this->http = new \GuzzleHttp\Client([
+                'base_uri' => rtrim(self::INTERNAL_API_URL, '/'),
+                'timeout'  => $this->timeout,
+                'headers' => [
+                    // Some container libcurl builds can hang on GET without a User-Agent.
+                    'User-Agent' => 'curl/8.0',
+                ],
+                'curl' => [
+                    CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
+                    CURLOPT_USERAGENT => 'curl/8.0',
+                ],
+            ]);
+            $this->isGuzzle = true;
+        } else {
+            $this->http = $this->psr18 ?? (object) [];
+        }
+
+        // If we're not using Guzzle, we need PSR-17 factories for request/stream creation.
+        if (! $this->isGuzzle) {
+            if ($this->requestFactory === null || $this->streamFactory === null) {
+                if (class_exists(\GuzzleHttp\Psr7\HttpFactory::class)) {
+                    $f = new \GuzzleHttp\Psr7\HttpFactory();
+                    $this->requestFactory = $this->requestFactory ?? $f;
+                    $this->streamFactory = $this->streamFactory ?? $f;
+                }
+            }
+
+            if ($this->psr18 === null) {
+                throw new \RuntimeException(
+                    'No HTTP client available. Install guzzlehttp/guzzle (recommended) or pass a PSR-18 ClientInterface.'
+                );
+            }
+            if ($this->requestFactory === null || $this->streamFactory === null) {
+                throw new \RuntimeException(
+                    'No PSR-17 factories available. Install guzzlehttp/psr7 or pass RequestFactoryInterface and StreamFactoryInterface.'
+                );
+            }
+        }
     }
 
     /**
@@ -70,7 +123,7 @@ class ToxoCloudClient
 
         $data = $this->post('/v1/query', $payload);
 
-        return (string) Arr::get($data, 'response', '');
+        return (string) ($data['response'] ?? '');
     }
 
     /**
@@ -164,7 +217,7 @@ class ToxoCloudClient
 
         $data = $this->post('/v1/query_multimodal', $payload, max($this->timeout, 180));
 
-        return (string) Arr::get($data, 'response', '');
+        return (string) ($data['response'] ?? '');
     }
 
     /**
@@ -419,42 +472,36 @@ class ToxoCloudClient
      */
     protected function get(string $path, ?int $timeout = null): array
     {
+        $timeout = $timeout ?? $this->timeout;
+
+        if ($this->isGuzzle) {
+            try {
+                /** @var \Psr\Http\Message\ResponseInterface $response */
+                $response = $this->http->request('GET', $path, [
+                    'timeout' => $timeout,
+                    'headers' => ['User-Agent' => 'curl/8.0'],
+                    'curl' => [
+                        CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
+                        CURLOPT_USERAGENT => 'curl/8.0',
+                    ],
+                ]);
+            } catch (\GuzzleHttp\Exception\GuzzleException $e) {
+                throw new \RuntimeException($e->getMessage(), 0, $e);
+            }
+            return $this->decodeJsonResponse($response);
+        }
+
+        $url = rtrim(self::INTERNAL_API_URL, '/') . $path;
+        $req = $this->requestFactory->createRequest('GET', $url)
+            ->withHeader('User-Agent', 'curl/8.0');
+
         try {
-            $response = $this->http->get($path, [
-                'timeout' => $timeout ?? $this->timeout,
-                'curl' => [
-                    CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
-                    CURLOPT_USERAGENT => 'curl/8.0',
-                ],
-            ]);
-        } catch (RequestException $e) {
-            $detail = '';
-            $resp = $e->getResponse();
-            if ($resp) {
-                $body = (string) $resp->getBody();
-                $decoded = json_decode($body, true);
-                if (is_array($decoded) && isset($decoded['detail'])) {
-                    $detail = (string) $decoded['detail'];
-                } else {
-                    $detail = mb_substr(trim($body), 0, 400);
-                }
-            }
-
-            if ($detail !== '') {
-                throw new \RuntimeException($e->getMessage() . ' | detail: ' . $detail, 0, $e);
-            }
-
-            throw $e;
+            $resp = $this->psr18->sendRequest($req);
+        } catch (ClientExceptionInterface $e) {
+            throw new \RuntimeException($e->getMessage(), 0, $e);
         }
 
-        $body = (string) $response->getBody();
-        $data = json_decode($body, true);
-
-        if (! is_array($data)) {
-            throw new \RuntimeException('Unexpected response from TOXO Cloud');
-        }
-
-        return $data;
+        return $this->decodeJsonResponse($resp);
     }
 
     /**
@@ -462,36 +509,61 @@ class ToxoCloudClient
      */
     protected function post(string $path, array $payload, ?int $timeout = null): array
     {
-        try {
-            $response = $this->http->post($path, [
-                'json'    => $payload,
-                'timeout' => $timeout ?? $this->timeout,
-            ]);
-        } catch (RequestException $e) {
-            $detail = '';
-            $resp = $e->getResponse();
-            if ($resp) {
-                $body = (string) $resp->getBody();
-                $decoded = json_decode($body, true);
-                if (is_array($decoded) && isset($decoded['detail'])) {
-                    $detail = (string) $decoded['detail'];
-                } else {
-                    $detail = mb_substr(trim($body), 0, 400);
-                }
-            }
+        $timeout = $timeout ?? $this->timeout;
 
-            if ($detail !== '') {
-                throw new \RuntimeException($e->getMessage() . ' | detail: ' . $detail, 0, $e);
+        if ($this->isGuzzle) {
+            try {
+                /** @var \Psr\Http\Message\ResponseInterface $response */
+                $response = $this->http->request('POST', $path, [
+                    'json' => $payload,
+                    'timeout' => $timeout,
+                    'headers' => ['User-Agent' => 'curl/8.0'],
+                    'curl' => [
+                        CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
+                        CURLOPT_USERAGENT => 'curl/8.0',
+                    ],
+                ]);
+            } catch (\GuzzleHttp\Exception\GuzzleException $e) {
+                throw new \RuntimeException($e->getMessage(), 0, $e);
             }
-
-            throw $e;
+            return $this->decodeJsonResponse($response);
         }
 
-        $body = (string) $response->getBody();
-        $data = json_decode($body, true);
+        $url = rtrim(self::INTERNAL_API_URL, '/') . $path;
+        $json = json_encode($payload);
+        if (! is_string($json)) {
+            throw new \RuntimeException('Failed to encode request payload as JSON');
+        }
+        $stream = $this->streamFactory->createStream($json);
+        $req = $this->requestFactory->createRequest('POST', $url)
+            ->withHeader('Content-Type', 'application/json')
+            ->withHeader('Accept', 'application/json')
+            ->withHeader('User-Agent', 'curl/8.0')
+            ->withBody($stream);
 
+        try {
+            $resp = $this->psr18->sendRequest($req);
+        } catch (ClientExceptionInterface $e) {
+            throw new \RuntimeException($e->getMessage(), 0, $e);
+        }
+
+        return $this->decodeJsonResponse($resp);
+    }
+
+    protected function decodeJsonResponse(ResponseInterface $response): array
+    {
+        $status = $response->getStatusCode();
+        $body = (string) $response->getBody();
+
+        $data = json_decode($body, true);
         if (! is_array($data)) {
-            throw new \RuntimeException('Unexpected response from TOXO Cloud');
+            $snippet = mb_substr(trim($body), 0, 400);
+            throw new \RuntimeException("Unexpected response from TOXO Cloud (status {$status})" . ($snippet ? ": {$snippet}" : ''));
+        }
+
+        if ($status >= 400) {
+            $detail = is_string($data['detail'] ?? null) ? $data['detail'] : ($body ? mb_substr(trim($body), 0, 400) : '');
+            throw new \RuntimeException("TOXO Cloud request failed (status {$status})" . ($detail ? ": {$detail}" : ''));
         }
 
         return $data;

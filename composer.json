@@ -27,10 +27,13 @@
   },
   "require": {
     "php": ">=8.1",
-    "guzzlehttp/guzzle": "^7.0",
-    "illuminate/support": "^10.0|^11.0"
+    "psr/http-client": "^1.0",
+    "psr/http-message": "^2.0",
+    "psr/http-factory": "^1.0",
+    "guzzlehttp/psr7": "^2.0"
   },
   "suggest": {
+    "guzzlehttp/guzzle": "Recommended PSR-18 HTTP client implementation.",
     "symfony/yaml": "Required only if you want to pass YAML files to agentRun()."
   }
 }
