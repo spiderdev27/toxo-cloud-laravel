@@ -29,6 +29,9 @@ class ToxoCloudClient
             // Cloud Run + some container libcurl builds can hang on HTTP/2 for GET requests.
             // Force HTTP/1.1 for consistent behavior across environments.
             'version'  => 1.1,
+            'curl' => [
+                CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
+            ],
         ]);
     }
 
